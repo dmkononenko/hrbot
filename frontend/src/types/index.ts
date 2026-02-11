@@ -1,94 +1,182 @@
-// Survey Types
-export type QuestionType = 'text' | 'single_choice' | 'multiple_choice';
+// Question types
+export type QuestionType = 'text' | 'single_choice' | 'multiple_choice'
 
 export interface QuestionOption {
-  id: string;
-  text: string;
-  order: number;
+  id: number
+  question_id: number
+  option_text: string
+  order_index: number
 }
 
 export interface Question {
-  id?: string;
-  type: QuestionType;
-  text: string;
-  options?: QuestionOption[];
-  required: boolean;
-  order: number;
+  id: number
+  survey_id: number
+  question_text: string
+  question_type: QuestionType
+  order_index: number
+  is_required: boolean
+  options?: QuestionOption[]
 }
 
+export interface QuestionCreate {
+  question_text: string
+  question_type: QuestionType
+  order_index: number
+  is_required: boolean
+  options?: { option_text: string; order_index: number }[]
+}
+
+// Survey types
 export interface Survey {
-  id?: string;
-  title: string;
-  description?: string;
-  questions: Question[];
-  is_active: boolean;
-  created_at?: string;
-  updated_at?: string;
+  id: number
+  title: string
+  description: string
+  days_after_start: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  questions: Question[]
 }
 
-// Employee Types
+export interface SurveyCreate {
+  title: string
+  description: string
+  days_after_start: number
+  is_active: boolean
+  questions: QuestionCreate[]
+}
+
+export interface SurveyUpdate {
+  title?: string
+  description?: string
+  days_after_start?: number
+  is_active?: boolean
+}
+
+export interface SurveysListResponse {
+  surveys: Survey[]
+  total: number
+}
+
+// Employee types
 export interface Employee {
-  id?: string;
-  telegram_id?: number;
-  full_name: string;
-  position: string;
-  department: string;
-  email?: string;
-  phone?: string;
-  is_active: boolean;
-  created_at?: string;
-  updated_at?: string;
+  id: number
+  telegram_id: number
+  telegram_username: string | null
+  first_name: string
+  last_name: string
+  start_date: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
-// Response Types
+export interface EmployeeCreate {
+  telegram_id: number
+  telegram_username?: string
+  first_name: string
+  last_name: string
+  start_date: string
+  is_active?: boolean
+}
+
+export interface EmployeeUpdate {
+  telegram_username?: string
+  first_name?: string
+  last_name?: string
+  start_date?: string
+  is_active?: boolean
+}
+
+export interface EmployeesListResponse {
+  employees: Employee[]
+  total: number
+}
+
+// Response types
+export type ResponseStatus = 'pending' | 'completed'
+
 export interface Answer {
-  question_id: string;
-  question_text: string;
-  answer: string | string[];
+  id: number
+  survey_response_id: number
+  question_id: number
+  answer_text: string | null
+  answer_options: number[] | null
 }
 
 export interface SurveyResponse {
-  id?: string;
-  survey_id: string;
-  employee_id: string;
-  answers: Answer[];
-  is_completed: boolean;
-  completed_at?: string;
-  started_at?: string;
+  id: number
+  survey_id: number
+  employee_id: number
+  status: ResponseStatus
+  completed_at: string | null
+  answers: Answer[]
+  employee: Employee
 }
 
-// Survey Results Types
-export interface SurveyResults {
-  survey_id: string;
-  survey_title: string;
-  total_responses: number;
-  completion_rate: number;
-  responses: SurveyResponse[];
-  questions: Question[];
+export interface ResponsesListResponse {
+  responses: SurveyResponse[]
+  total: number
 }
 
-// API Response Types
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  error?: string;
+// Survey Results
+export interface AnswerDetail {
+  question_id: number
+  question_text: string
+  question_type: QuestionType
+  answer_text: string | null
+  answer_options: string[] | null
 }
 
-export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
+export interface ResponseResult {
+  response_id: number
+  employee: {
+    id: number
+    telegram_id: number
+    telegram_username: string | null
+    first_name: string
+    last_name: string
+  }
+  completed_at: string | null
+  answers: AnswerDetail[]
 }
 
-// Notification Types
-export interface Notification {
-  id?: string;
-  employee_id: string;
-  type: 'invite' | 'reminder' | 'completed';
-  status: 'pending' | 'sent' | 'failed';
-  sent_at?: string;
-  error_message?: string;
+export interface SurveyResultsResponse {
+  survey_id: number
+  survey_title: string
+  responses: ResponseResult[]
+  total_responses: number
+  completion_rate: number
+}
+
+// Eligible Employee
+export interface EligibleEmployee {
+  id: number
+  telegram_id: number
+  first_name: string
+  last_name: string
+  start_date: string
+  days_since_start: number
+}
+
+export interface EligibleEmployeesResponse {
+  survey_id: number
+  days_after_start: number
+  eligible_employees: EligibleEmployee[]
+  total: number
+}
+
+// Bot API types
+export interface InitiateSurveyRequest {
+  employee_telegram_id: number
+  survey_id: number
+}
+
+export interface InitiateSurveyResponse {
+  message: string
+  response_id: number
+  employee_telegram_id: number
+  survey_id: number
+  invite_sent: boolean
+  invite_error: string | null
 }

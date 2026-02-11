@@ -1,6 +1,6 @@
 import logging
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -35,6 +35,7 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
     """Start survey when user clicks button."""
     survey_id = int(callback.data.split("_")[2])
     telegram_id = callback.from_user.id
+    logger.info(f"start_survey called: survey_id={survey_id}, telegram_id={telegram_id}")
 
     async with async_session() as db:
         # Get employee
@@ -90,14 +91,18 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
 
         # Show first question
         first_question = survey.questions[0]
-        await show_question(callback.message, first_question, callback.message.bot, callback.from_user.id)
+        await show_question(callback.message, first_question, callback.message.bot, callback.from_user.id, state)
 
         await callback.answer()
 
 
 async def show_question(message: Message, question: Question, bot, user_id: int, state: FSMContext = None):
-    """Display question based on type."""
+    """Display question based on type and set appropriate FSM state."""
+    logger.info(f"show_question: question_id={question.id}, type={question.question_type}, has_state={state is not None}")
     if question.question_type == "text":
+        if state:
+            await state.set_state(SurveyStates.waiting_for_answer)
+            logger.info(f"Set state to waiting_for_answer for text question")
         await message.answer(
             f"❓ {question.question_text}\n\n"
             "Введите ваш ответ:",
@@ -105,6 +110,9 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
         )
 
     elif question.question_type == "single_choice":
+        if state:
+            await state.set_state(SurveyStates.waiting_for_answer)
+            logger.info(f"Set state to waiting_for_answer for single_choice question")
         options_list = [
             {"id": opt.id, "option_text": opt.option_text}
             for opt in question.options
@@ -116,6 +124,11 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
         )
 
     elif question.question_type == "multiple_choice":
+        if state:
+            await state.set_state(SurveyStates.selecting_options)
+            # Reset selected answers for new question
+            await state.update_data(selected_answers=[])
+            logger.info(f"Set state to selecting_options for multiple_choice question")
         options_list = [
             {"id": opt.id, "option_text": opt.option_text}
             for opt in question.options
@@ -198,6 +211,7 @@ async def handle_text_answer(message: Message, state: FSMContext):
 @router.callback_query(SurveyStates.waiting_for_answer, F.data.startswith("option_"))
 async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
     """Handle single choice selection."""
+    logger.info(f"handle_single_choice called: data={callback.data}, state={await state.get_state()}")
     telegram_id = callback.from_user.id
 
     async with async_session() as db:
@@ -614,3 +628,12 @@ async def back_to_menu(callback: CallbackQuery):
             )
 
     await callback.answer()
+
+
+# Debug handler - catch all callback queries with option_ prefix
+@router.callback_query(F.data.startswith("option_"))
+async def debug_option_handler(callback: CallbackQuery, state: FSMContext):
+    """Debug handler for option callbacks."""
+    current_state = await state.get_state()
+    logger.warning(f"DEBUG: Received option callback: data={callback.data}, current_state={current_state}")
+    await callback.answer("Debug: state check", show_alert=True)

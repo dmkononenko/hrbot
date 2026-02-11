@@ -1,10 +1,14 @@
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from app.config import settings
 
 # Create bot instance
-bot = Bot(token=settings.BOT_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(
+    token=settings.BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 
 # Create dispatcher with FSM storage
 dp = Dispatcher(storage=MemoryStorage())

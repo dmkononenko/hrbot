@@ -8,8 +8,8 @@ from typing import Optional, List
 from app.database import get_db
 from app.models import Employee, Survey, SurveyResponse, Question
 from app.config import settings
-from app.bot.bot import bot
-from app.bot.services.notification_service import NotificationService
+# from app.bot.bot import bot
+# from app.bot.services.notification_service import NotificationService
 
 router = APIRouter()
 
@@ -109,11 +109,12 @@ async def initiate_survey(
     await db.refresh(db_response)
 
     # Отправляем приглашение на опрос
-    invite_result = await notification_service.send_survey_invite(
-        employee_id=employee.id,
-        survey_id=request.survey_id,
-        db=db
-    )
+    # invite_result = await notification_service.send_survey_invite(
+    #     employee_id=employee.id,
+    #     survey_id=request.survey_id,
+    #     db=db
+    # )
+    invite_result = {"success": False, "error": "Bot disabled"}
 
     return {
         "message": "Survey initiated successfully",
@@ -126,7 +127,8 @@ async def initiate_survey(
 
 
 # Инициализация сервиса уведомлений
-notification_service = NotificationService(bot)
+# notification_service = NotificationService(bot)
+notification_service = None
 
 
 @router.post("/send-invite")
@@ -137,19 +139,20 @@ async def send_survey_invite(
     """
     Отправка приглашения на прохождение опроса сотруднику.
     """
-    result = await notification_service.send_survey_invite(
-        employee_id=request["employee_id"],
-        survey_id=request["survey_id"],
-        db=db
-    )
+    return {"success": False, "error": "Bot disabled"}
+    # result = await notification_service.send_survey_invite(
+    #     employee_id=request["employee_id"],
+    #     survey_id=request["survey_id"],
+    #     db=db
+    # )
 
-    if not result["success"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to send invite")
-        )
+    # if not result["success"]:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail=result.get("error", "Failed to send invite")
+    #     )
 
-    return result
+    # return result
 
 
 @router.post("/send-reminder")
@@ -160,20 +163,21 @@ async def send_survey_reminder(
     """
     Отправка напоминания о прохождении опроса.
     """
-    result = await notification_service.send_reminder(
-        employee_id=request["employee_id"],
-        survey_id=request["survey_id"],
-        db=db,
-        days_remaining=request.get("days_remaining")
-    )
+    return {"success": False, "error": "Bot disabled"}
+    # result = await notification_service.send_reminder(
+    #     employee_id=request["employee_id"],
+    #     survey_id=request["survey_id"],
+    #     db=db,
+    #     days_remaining=request.get("days_remaining")
+    # )
 
-    if not result["success"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to send reminder")
-        )
+    # if not result["success"]:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail=result.get("error", "Failed to send reminder")
+    #     )
 
-    return result
+    # return result
 
 
 @router.post("/send-reminders-batch")
@@ -184,19 +188,20 @@ async def send_reminders_batch(
     """
     Отправка серии напоминаний всем сотрудникам, у которых есть опрос.
     """
-    result = await notification_service.send_multiple_reminders(
-        survey_id=request["survey_id"],
-        db=db,
-        days=request.get("days", [3, 1, 0])
-    )
+    return {"success": False, "error": "Bot disabled"}
+    # result = await notification_service.send_multiple_reminders(
+    #     survey_id=request["survey_id"],
+    #     db=db,
+    #     days=request.get("days", [3, 1, 0])
+    # )
 
-    if not result["success"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to send reminders")
-        )
+    # if not result["success"]:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail=result.get("error", "Failed to send reminders")
+    #     )
 
-    return result
+    # return result
 
 
 @router.get("/surveys/{telegram_id}")

@@ -6,7 +6,7 @@ from typing import List
 
 from app.database import get_db
 from app.models import SurveyResponse, Answer, Survey, Question, QuestionOption, Employee
-from app.schemas import ResponseList, SurveyResults, ResponseResult, QuestionResult, EmployeeResult
+from app.schemas import ResponseList, SurveyResults, ResponseResult, QuestionResult, EmployeeResult, SurveyResponse as SurveyResponseSchema
 
 router = APIRouter()
 
@@ -139,7 +139,7 @@ async def get_survey_results(survey_id: int, db: AsyncSession = Depends(get_db))
     )
 
 
-@router.get("/{response_id}", response_model=SurveyResponse)
+@router.get("/{response_id}", response_model=SurveyResponseSchema)
 async def get_response(response_id: int, db: AsyncSession = Depends(get_db)):
     """Get response by ID."""
     result = await db.execute(

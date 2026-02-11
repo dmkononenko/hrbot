@@ -7,6 +7,9 @@ from app.schemas.response import (
     ResponseList,
     Answer,
     AnswerCreate,
+    QuestionResult,
+    EmployeeResult,
+    ResponseResult,
 )
 from app.schemas.bot import (
     SurveyInviteRequest,
@@ -23,6 +26,7 @@ __all__ = [
     "EmployeeCreate",
     "EmployeeUpdate",
     "EmployeeList",
+    "EmployeeResult",
     "Survey",
     "SurveyCreate",
     "SurveyUpdate",
@@ -34,6 +38,8 @@ __all__ = [
     "SurveyResponseCreate",
     "SurveyResults",
     "ResponseList",
+    "ResponseResult",
     "Answer",
     "AnswerCreate",
+    "QuestionResult",
 ]
