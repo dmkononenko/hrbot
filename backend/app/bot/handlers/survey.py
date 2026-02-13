@@ -261,7 +261,7 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
         answer = Answer(
             question_id=question.id,
             response_id=response_id,
-            option_id=option.id
+            answer_options=[option.id]
         )
         db.add(answer)
 
@@ -394,14 +394,13 @@ async def submit_multiple_choice(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
             return
 
-        # Save answers to database
-        for option_id in selected_answers:
-            answer = Answer(
-                question_id=question.id,
-                response_id=response_id,
-                option_id=option_id
-            )
-            db.add(answer)
+        # Save answers to database (as JSON array)
+        answer = Answer(
+            question_id=question.id,
+            response_id=response_id,
+            answer_options=selected_answers
+        )
+        db.add(answer)
 
         # Update current question index
         new_index = current_question_index + 1

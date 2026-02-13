@@ -66,6 +66,9 @@ export interface Employee {
   first_name: string
   last_name: string
   start_date: string
+  branch: string | null
+  department: string | null
+  position: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -77,6 +80,9 @@ export interface EmployeeCreate {
   first_name: string
   last_name: string
   start_date: string
+  branch?: string
+  department?: string
+  position?: string
   is_active?: boolean
 }
 
@@ -85,6 +91,9 @@ export interface EmployeeUpdate {
   first_name?: string
   last_name?: string
   start_date?: string
+  branch?: string
+  department?: string
+  position?: string
   is_active?: boolean
 }
 
@@ -136,6 +145,9 @@ export interface ResponseResult {
     telegram_username: string | null
     first_name: string
     last_name: string
+    branch: string | null
+    department: string | null
+    position: string | null
   }
   completed_at: string | null
   answers: AnswerDetail[]

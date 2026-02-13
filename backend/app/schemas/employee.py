@@ -9,6 +9,9 @@ class EmployeeBase(BaseModel):
     first_name: Optional[str] = Field(None, max_length=255)
     last_name: Optional[str] = Field(None, max_length=255)
     start_date: date = Field(..., description="Employee start date")
+    branch: Optional[str] = Field(None, max_length=255)
+    department: Optional[str] = Field(None, max_length=255)
+    position: Optional[str] = Field(None, max_length=255)
     is_active: bool = True
 
 
@@ -21,6 +24,9 @@ class EmployeeUpdate(BaseModel):
     first_name: Optional[str] = Field(None, max_length=255)
     last_name: Optional[str] = Field(None, max_length=255)
     start_date: Optional[date] = None
+    branch: Optional[str] = Field(None, max_length=255)
+    department: Optional[str] = Field(None, max_length=255)
+    position: Optional[str] = Field(None, max_length=255)
     is_active: Optional[bool] = None
 
 

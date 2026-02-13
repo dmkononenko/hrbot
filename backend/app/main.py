@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.api.v1 import router as api_v1_router
-from app.bot import bot, dp
+from app.bot import bot, dp, storage
 from app.bot.handlers.start import router as start_router
 from app.bot.handlers.survey import router as survey_router
 from aiogram.types import Update
@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     await bot.session.close()
+    await storage.close()
 
 # Create FastAPI app
 app = FastAPI(

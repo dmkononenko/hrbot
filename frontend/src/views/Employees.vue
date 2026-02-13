@@ -8,6 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -39,8 +46,33 @@ const formData = ref({
   first_name: '',
   last_name: '',
   start_date: '',
+  branch: '',
+  department: '',
+  position: '',
   is_active: true,
 })
+
+const branches = [
+  { value: 'head_office', label: 'Головной офис' },
+  { value: 'faoa_asia', label: 'ФАОА "О!БАнк - Азия"' },
+]
+
+const departments = [
+  { value: 'project_management', label: 'Проектное управление' },
+  { value: 'hr_department', label: 'Отдел управления персоналом' },
+]
+
+const positions = ref<string[]>([])
+
+const getBranchLabel = (value: string | null) => {
+  if (!value) return '-'
+  return branches.find(b => b.value === value)?.label ?? '-'
+}
+
+const getDepartmentLabel = (value: string | null) => {
+  if (!value) return '-'
+  return departments.find(d => d.value === value)?.label ?? '-'
+}
 
 const resetForm = () => {
   formData.value = {
@@ -49,6 +81,9 @@ const resetForm = () => {
     first_name: '',
     last_name: '',
     start_date: new Date().toISOString().split('T')[0] ?? '',
+    branch: '',
+    department: '',
+    position: '',
     is_active: true,
   }
   editingEmployee.value = null
@@ -67,6 +102,9 @@ const openEditDialog = (employee: Employee) => {
     first_name: employee.first_name,
     last_name: employee.last_name,
     start_date: employee.start_date,
+    branch: employee.branch ?? '',
+    department: employee.department ?? '',
+    position: employee.position ?? '',
     is_active: employee.is_active,
   }
   isDialogOpen.value = true
@@ -143,6 +181,9 @@ onMounted(loadEmployees)
             <TableHeader>
               <TableRow>
                 <TableHead>Имя</TableHead>
+                <TableHead>Филиал</TableHead>
+                <TableHead>Департамент</TableHead>
+                <TableHead>Должность</TableHead>
                 <TableHead>Telegram</TableHead>
                 <TableHead>Telegram ID</TableHead>
                 <TableHead>Дата найма</TableHead>
@@ -152,7 +193,7 @@ onMounted(loadEmployees)
             </TableHeader>
             <TableBody>
               <TableRow v-if="employees.length === 0">
-                <TableCell colspan="6" class="text-center text-muted-foreground">
+                <TableCell colspan="9" class="text-center text-muted-foreground">
                   Нет сотрудников
                 </TableCell>
               </TableRow>
@@ -160,6 +201,9 @@ onMounted(loadEmployees)
                 <TableCell class="font-medium">
                   {{ employee.first_name }} {{ employee.last_name }}
                 </TableCell>
+                <TableCell>{{ getBranchLabel(employee.branch) }}</TableCell>
+                <TableCell>{{ getDepartmentLabel(employee.department) }}</TableCell>
+                <TableCell>{{ employee.position || '-' }}</TableCell>
                 <TableCell>
                   {{ employee.telegram_username ? `@${employee.telegram_username}` : '-' }}
                 </TableCell>
@@ -234,6 +278,51 @@ onMounted(loadEmployees)
               id="start_date"
               type="date"
               v-model="formData.start_date"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <Label for="branch">Филиал</Label>
+            <Select v-model="formData.branch">
+              <SelectTrigger id="branch">
+                <SelectValue placeholder="Выберите филиал" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="branch in branches"
+                  :key="branch.value"
+                  :value="branch.value"
+                >
+                  {{ branch.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="space-y-2">
+            <Label for="department">Департамент</Label>
+            <Select v-model="formData.department">
+              <SelectTrigger id="department">
+                <SelectValue placeholder="Выберите департамент" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="dept in departments"
+                  :key="dept.value"
+                  :value="dept.value"
+                >
+                  {{ dept.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="space-y-2">
+            <Label for="position">Должность</Label>
+            <Input
+              id="position"
+              v-model="formData.position"
+              placeholder="Введите должность"
             />
           </div>
 
