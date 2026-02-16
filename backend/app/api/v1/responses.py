@@ -183,11 +183,10 @@ async def get_survey_analytics(survey_id: int, db: AsyncSession = Depends(get_db
             detail="Survey not found"
         )
 
-    # Get all completed responses with answers
+    # Get all responses with answers (including in_progress for analytics)
     responses_result = await db.execute(
         select(SurveyResponse)
         .where(SurveyResponse.survey_id == survey_id)
-        .where(SurveyResponse.status == "completed")
         .options(selectinload(SurveyResponse.answers))
     )
     responses = responses_result.scalars().all()

@@ -254,6 +254,7 @@ async def handle_text_answer(message: Message, state: FSMContext):
         if new_index >= len(survey.questions):
             # Complete survey
             await complete_survey(db, response_id)
+            await db.commit()
             # Send message BEFORE clearing state to ensure user gets confirmation
             await message.answer(
                 get_message(language, "survey_completed"),

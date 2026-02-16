@@ -13,6 +13,8 @@ sys.path.insert(0, str(backend_dir))
 
 from app.database import init_db
 from app.config import settings
+# Import all models to register them with Base
+from app.models import Employee, Survey, Question, QuestionOption, SurveyResponse, Answer
 
 
 async def main():
