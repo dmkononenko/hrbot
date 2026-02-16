@@ -47,10 +47,24 @@ class SQLiteStorage(BaseStorage):
         chat_id, user_id, bot_id = self._get_key_parts(key)
         state_value = state.state if state else None
 
-        await conn.execute("""
-            INSERT OR REPLACE INTO fsm_state (chat_id, user_id, bot_id, state)
-            VALUES (?, ?, ?, COALESCE(?, (SELECT state FROM fsm_state WHERE chat_id = ? AND user_id = ? AND bot_id = ?)))
-        """, (chat_id, user_id, bot_id, state_value, chat_id, user_id, bot_id))
+        # First check if row exists
+        cursor = await conn.execute(
+            "SELECT 1 FROM fsm_state WHERE chat_id = ? AND user_id = ? AND bot_id = ?",
+            (chat_id, user_id, bot_id)
+        )
+        exists = await cursor.fetchone()
+
+        if exists:
+            # Update existing row, preserve data
+            await conn.execute("""
+                UPDATE fsm_state SET state = ? WHERE chat_id = ? AND user_id = ? AND bot_id = ?
+            """, (state_value, chat_id, user_id, bot_id))
+        else:
+            # Insert new row
+            await conn.execute("""
+                INSERT INTO fsm_state (chat_id, user_id, bot_id, state)
+                VALUES (?, ?, ?, ?)
+            """, (chat_id, user_id, bot_id, state_value))
         await conn.commit()
 
     async def get_state(self, key: StorageKey) -> Optional[State]:
@@ -74,10 +88,24 @@ class SQLiteStorage(BaseStorage):
         chat_id, user_id, bot_id = self._get_key_parts(key)
         data_json = json.dumps(data)
 
-        await conn.execute("""
-            INSERT OR REPLACE INTO fsm_state (chat_id, user_id, bot_id, data)
-            VALUES (?, ?, ?, COALESCE(?, (SELECT data FROM fsm_state WHERE chat_id = ? AND user_id = ? AND bot_id = ?)))
-        """, (chat_id, user_id, bot_id, data_json, chat_id, user_id, bot_id))
+        # First check if row exists
+        cursor = await conn.execute(
+            "SELECT 1 FROM fsm_state WHERE chat_id = ? AND user_id = ? AND bot_id = ?",
+            (chat_id, user_id, bot_id)
+        )
+        exists = await cursor.fetchone()
+
+        if exists:
+            # Update existing row, preserve state
+            await conn.execute("""
+                UPDATE fsm_state SET data = ? WHERE chat_id = ? AND user_id = ? AND bot_id = ?
+            """, (data_json, chat_id, user_id, bot_id))
+        else:
+            # Insert new row
+            await conn.execute("""
+                INSERT INTO fsm_state (chat_id, user_id, bot_id, data)
+                VALUES (?, ?, ?, ?)
+            """, (chat_id, user_id, bot_id, data_json))
         await conn.commit()
 
     async def get_data(self, key: StorageKey) -> Dict[str, Any]:

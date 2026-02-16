@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -31,7 +32,9 @@ import {
 } from '@/components/ui/dialog'
 import { employeesApi } from '@/api/client'
 import type { Employee } from '@/types'
-import { Plus, Pencil, Trash2 } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, Eye } from 'lucide-vue-next'
+
+const router = useRouter()
 
 const employees = ref<Employee[]>([])
 const loading = ref(true)
@@ -49,8 +52,21 @@ const formData = ref({
   branch: '',
   department: '',
   position: '',
+  gender: '',
+  age: null as number | null,
   is_active: true,
 })
+
+const genders = [
+  { value: 'male', label: 'Мужской' },
+  { value: 'female', label: 'Женский' },
+  { value: 'other', label: 'Другой' },
+]
+
+const getGenderLabel = (value: string | null) => {
+  if (!value) return '-'
+  return genders.find(g => g.value === value)?.label ?? '-'
+}
 
 const branches = [
   { value: 'head_office', label: 'Головной офис' },
@@ -61,8 +77,6 @@ const departments = [
   { value: 'project_management', label: 'Проектное управление' },
   { value: 'hr_department', label: 'Отдел управления персоналом' },
 ]
-
-const positions = ref<string[]>([])
 
 const getBranchLabel = (value: string | null) => {
   if (!value) return '-'
@@ -84,6 +98,8 @@ const resetForm = () => {
     branch: '',
     department: '',
     position: '',
+    gender: '',
+    age: null,
     is_active: true,
   }
   editingEmployee.value = null
@@ -105,6 +121,8 @@ const openEditDialog = (employee: Employee) => {
     branch: employee.branch ?? '',
     department: employee.department ?? '',
     position: employee.position ?? '',
+    gender: employee.gender ?? '',
+    age: employee.age,
     is_active: employee.is_active,
   }
   isDialogOpen.value = true
@@ -153,6 +171,10 @@ const loadEmployees = async () => {
   }
 }
 
+const viewResponses = (employee: Employee) => {
+  router.push(`/employees/${employee.id}/responses`)
+}
+
 onMounted(loadEmployees)
 </script>
 
@@ -184,6 +206,8 @@ onMounted(loadEmployees)
                 <TableHead>Филиал</TableHead>
                 <TableHead>Департамент</TableHead>
                 <TableHead>Должность</TableHead>
+                <TableHead>Пол</TableHead>
+                <TableHead>Возраст</TableHead>
                 <TableHead>Telegram</TableHead>
                 <TableHead>Telegram ID</TableHead>
                 <TableHead>Дата найма</TableHead>
@@ -193,7 +217,7 @@ onMounted(loadEmployees)
             </TableHeader>
             <TableBody>
               <TableRow v-if="employees.length === 0">
-                <TableCell colspan="9" class="text-center text-muted-foreground">
+                <TableCell colspan="11" class="text-center text-muted-foreground">
                   Нет сотрудников
                 </TableCell>
               </TableRow>
@@ -204,6 +228,8 @@ onMounted(loadEmployees)
                 <TableCell>{{ getBranchLabel(employee.branch) }}</TableCell>
                 <TableCell>{{ getDepartmentLabel(employee.department) }}</TableCell>
                 <TableCell>{{ employee.position || '-' }}</TableCell>
+                <TableCell>{{ getGenderLabel(employee.gender) }}</TableCell>
+                <TableCell>{{ employee.age || '-' }}</TableCell>
                 <TableCell>
                   {{ employee.telegram_username ? `@${employee.telegram_username}` : '-' }}
                 </TableCell>
@@ -216,6 +242,9 @@ onMounted(loadEmployees)
                 </TableCell>
                 <TableCell class="text-right">
                   <div class="flex justify-end gap-2">
+                    <Button variant="ghost" size="icon" @click="viewResponses(employee)" title="Просмотреть ответы">
+                      <Eye class="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" @click="openEditDialog(employee)">
                       <Pencil class="h-4 w-4" />
                     </Button>
@@ -324,6 +353,38 @@ onMounted(loadEmployees)
               v-model="formData.position"
               placeholder="Введите должность"
             />
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <Label for="gender">Пол</Label>
+              <Select v-model="formData.gender">
+                <SelectTrigger id="gender">
+                  <SelectValue placeholder="Выберите пол" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="gender in genders"
+                    :key="gender.value"
+                    :value="gender.value"
+                  >
+                    {{ gender.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-2">
+              <Label for="age">Возраст</Label>
+              <Input
+                id="age"
+                type="number"
+                :model-value="formData.age ?? undefined"
+                @update:model-value="formData.age = $event === '' ? null : Number($event)"
+                placeholder="25"
+                min="1"
+                max="100"
+              />
+            </div>
           </div>
 
           <div class="flex items-center space-x-2">

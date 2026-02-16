@@ -12,6 +12,8 @@ class EmployeeBase(BaseModel):
     branch: Optional[str] = Field(None, max_length=255)
     department: Optional[str] = Field(None, max_length=255)
     position: Optional[str] = Field(None, max_length=255)
+    gender: Optional[str] = Field(None, max_length=10)
+    age: Optional[int] = None
     is_active: bool = True
 
 
@@ -27,6 +29,8 @@ class EmployeeUpdate(BaseModel):
     branch: Optional[str] = Field(None, max_length=255)
     department: Optional[str] = Field(None, max_length=255)
     position: Optional[str] = Field(None, max_length=255)
+    gender: Optional[str] = Field(None, max_length=10)
+    age: Optional[int] = None
     is_active: Optional[bool] = None
 
 

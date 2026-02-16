@@ -5,8 +5,8 @@ import { LayoutDashboard, FileText, Users, BarChart3 } from 'lucide-vue-next'
 const route = useRoute()
 
 const navItems = [
-  { path: '/', label: 'Панель', icon: LayoutDashboard },
-  { path: '/surveys', label: 'Опросы', icon: FileText },
+  { path: '/dashboard', label: 'Панель', icon: LayoutDashboard },
+  { path: '/', label: 'Опросы', icon: FileText },
   { path: '/employees', label: 'Сотрудники', icon: Users },
   { path: '/results', label: 'Результаты', icon: BarChart3 },
 ]
@@ -25,7 +25,7 @@ const isActive = (path: string) => {
     <header class="sticky top-0 z-40 border-b bg-background">
       <div class="container flex h-16 items-center justify-between px-4">
         <div class="flex items-center gap-6">
-          <RouterLink to="/" class="flex items-center gap-2">
+          <RouterLink to="/dashboard" class="flex items-center gap-2">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <LayoutDashboard class="h-5 w-5" />
             </div>

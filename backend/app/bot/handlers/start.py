@@ -1,47 +1,45 @@
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import Employee, SurveyResponse
-from app.bot.keyboards.keyboards import build_main_menu_keyboard, build_help_keyboard
+from app.bot.keyboards.keyboards import (
+    build_main_menu_keyboard,
+    build_help_keyboard,
+    build_language_keyboard
+)
+from app.bot.helpers.localization import (
+    LANG_KG,
+    LANG_RU,
+    get_welcome_message,
+    get_help_message,
+    get_message,
+)
 from datetime import datetime, timedelta
 
 router = Router()
 
 
-async def get_db_session() -> AsyncSession:
-    """Get database session."""
-    async with async_session() as session:
-        yield session
+async def get_employee_language(employee: Employee) -> str:
+    """Get employee language, default to 'ru' if not set."""
+    return employee.language if employee.language else LANG_RU
 
 
-@router.message(Command("start"))
-async def cmd_start(message: Message):
-    """Handle /start command."""
-    telegram_id = message.from_user.id
+async def show_language_selection(message: Message):
+    """Show language selection keyboard."""
+    await message.answer(
+        "🌐 " + get_welcome_message(LANG_RU, "select_language"),
+        reply_markup=build_language_keyboard()
+    )
 
+
+async def show_main_menu(message, employee: Employee, language: str):
+    """Show main menu with localized content."""
     async with async_session() as db:
-        # Check if employee exists
-        result = await db.execute(
-            select(Employee).where(Employee.telegram_id == telegram_id)
-        )
-        employee = result.scalar_one_or_none()
-
-        if not employee:
-            await message.answer(
-                "👋 Welcome to the HR Survey Bot!\n\n"
-                "You're not registered in our system yet. "
-                "Please contact HR to complete your registration."
-            )
-            return
-
         # Check for pending surveys
-        cutoff_date = datetime.now().date() - timedelta(days=90)
-
-        # Get active surveys the employee is eligible for
         result = await db.execute(
             select(SurveyResponse).where(
                 SurveyResponse.employee_id == employee.id,
@@ -50,48 +48,151 @@ async def cmd_start(message: Message):
         )
         pending_responses = result.scalars().all()
 
-        if pending_responses:
-            await message.answer(
-                f"👋 Welcome back, {employee.first_name}!\n\n"
-                f"You have {len(pending_responses)} pending survey(s). "
-                f"Please check the main menu to continue.",
-                reply_markup=build_main_menu_keyboard()
+    name = employee.first_name or "Кесиптеш"
+
+    if pending_responses:
+        text = (
+            f"👋 {get_welcome_message(language, 'greeting', name=name)}\n\n"
+            f"{get_welcome_message(language, 'intro')}\n\n"
+            f"{get_welcome_message(language, 'pending_surveys', count=len(pending_responses))}"
+        )
+    else:
+        text = (
+            f"👋 {get_welcome_message(language, 'greeting', name=name)}\n\n"
+            f"{get_welcome_message(language, 'intro')}\n\n"
+            f"{get_welcome_message(language, 'no_surveys')}"
+        )
+
+    await message.answer(text, reply_markup=build_main_menu_keyboard(language))
+
+
+@router.message(Command("start"))
+async def cmd_start(message: Message):
+    """Handle /start command - auto-register new employees."""
+    telegram_id = message.from_user.id
+    user = message.from_user
+
+    print(f"[DEBUG] /start received from telegram_id={telegram_id}, username={user.username}")
+
+    async with async_session() as db:
+        # Check if employee exists
+        result = await db.execute(
+            select(Employee).where(Employee.telegram_id == telegram_id)
+        )
+        employee = result.scalar_one_or_none()
+
+        # Auto-register new employee
+        if not employee:
+            new_employee = Employee(
+                telegram_id=telegram_id,
+                telegram_username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                start_date=datetime.now().date(),
+                is_active=True,
             )
-        else:
-            await message.answer(
-                f"👋 Добро пожаловать, {employee.first_name}!\n\n"
-                "В данный момент нет доступных опросов. "
-                "Вы будете notified, когда появятся новые опросы.",
-                reply_markup=build_main_menu_keyboard()
-            )
+            db.add(new_employee)
+            await db.commit()
+            await db.refresh(new_employee)
+            employee = new_employee
+
+        # Check if language is set
+        if not employee.language:
+            await show_language_selection(message)
+            return
+
+        # Show main menu with employee's language
+        await show_main_menu(message, employee, employee.language)
+
+
+@router.callback_query(F.data.startswith("lang_"))
+async def cmd_select_language(callback: CallbackQuery):
+    """Handle language selection."""
+    telegram_id = callback.from_user.id
+    language = callback.data.split("_")[1]  # Extract 'kg' or 'ru'
+
+    if language not in [LANG_KG, LANG_RU]:
+        await callback.answer("❌ Invalid language selection")
+        return
+
+    async with async_session() as db:
+        # Get employee
+        result = await db.execute(
+            select(Employee).where(Employee.telegram_id == telegram_id)
+        )
+        employee = result.scalar_one_or_none()
+
+        if not employee:
+            await callback.message.edit_text("❌ " + get_message(LANG_RU, "employee_not_found"))
+            await callback.answer()
+            return
+
+        # Update employee language
+        await db.execute(
+            update(Employee).where(Employee.id == employee.id).values(language=language)
+        )
+        await db.commit()
+
+        # Refresh employee object
+        await db.refresh(employee)
+
+    # Update the message with selected language confirmation
+    lang_name = "Кыргызча" if language == LANG_KG else "Русский"
+    await callback.message.edit_text(
+        f"✅ Тил тандалды: {lang_name} / Язык выбран: {lang_name}\n\n"
+        f"{get_welcome_message(language, 'greeting', name=employee.first_name or 'Кесиптеш')}\n\n"
+        f"{get_welcome_message(language, 'intro')}\n\n"
+        f"👇 Меню / Меню:",
+        reply_markup=build_main_menu_keyboard(language)
+    )
+
+    await callback.answer()
+
+
+@router.callback_query(F.data == "change_language")
+async def cmd_change_language(callback: CallbackQuery):
+    """Handle language change request."""
+    telegram_id = callback.from_user.id
+
+    async with async_session() as db:
+        # Get employee
+        result = await db.execute(
+            select(Employee).where(Employee.telegram_id == telegram_id)
+        )
+        employee = result.scalar_one_or_none()
+
+        if not employee:
+            await callback.message.edit_text("❌ " + get_message(LANG_RU, "employee_not_found"))
+            await callback.answer()
+            return
+
+    # Show language selection keyboard
+    await callback.message.edit_text(
+        "🌐 " + get_welcome_message(LANG_RU, "select_language"),
+        reply_markup=build_language_keyboard()
+    )
+
+    await callback.answer()
 
 
 @router.callback_query(F.data == "help")
 async def cmd_help(callback: CallbackQuery):
     """Show help information."""
-    help_text = """🤖 Справка по HR Survey Bot
+    async with async_session() as db:
+        # Get employee for language
+        result = await db.execute(
+            select(Employee).where(Employee.telegram_id == callback.from_user.id)
+        )
+        employee = result.scalar_one_or_none()
+        language = await get_employee_language(employee) if employee else LANG_RU
 
-📋 **Как пройти опрос:**
-1. Выберите доступный опрос из списка
-2. Отвечайте на вопросы по порядку
-3. Для текстовых вопросов введите ваш ответ
-4. Для выбора вариантов нажмите на кнопку
-5. Для множественного выбора выберите несколько вариантов и нажмите "✓ Submit"
+    help_text = get_help_message(language)
 
-❌ **Отмена опроса:**
-- В любой момент нажмите "Отменить опрос"
-- Опрос будет сохранен с статусом "cancelled"
-
-📊 **Мои опросы:**
-- Посмотрите список всех доступных опросов
-
-Если у вас возникли вопросы, свяжитесь с HR."""
-    
     await callback.message.edit_text(
         help_text,
-        reply_markup=build_help_keyboard()
+        reply_markup=build_help_keyboard(language)
     )
-    
+
     await callback.answer()
 
 
@@ -108,7 +209,7 @@ async def cmd_back_to_menu(callback: CallbackQuery):
         employee = emp_result.scalar_one_or_none()
 
         if not employee:
-            await callback.message.edit_text("Сотрудник не найден. Пожалуйста, свяжитесь с HR.")
+            await callback.message.edit_text("❌ " + get_message(LANG_RU, "employee_not_found"))
             await callback.answer()
             return
 
@@ -121,19 +222,25 @@ async def cmd_back_to_menu(callback: CallbackQuery):
         )
         pending_responses = result.scalars().all()
 
+        language = await get_employee_language(employee)
+        name = employee.first_name or "Кесиптеш"
+
         if pending_responses:
-            await callback.message.edit_text(
-                f"👋 Добро пожаловать, {employee.first_name}!\n\n"
-                f"У вас {len(pending_responses)} опросов в ожидании. "
-                f"Пожалуйста, проверьте меню для продолжения.",
-                reply_markup=build_main_menu_keyboard()
+            text = (
+                f"👋 {get_welcome_message(language, 'greeting', name=name)}\n\n"
+                f"{get_welcome_message(language, 'intro')}\n\n"
+                f"{get_welcome_message(language, 'pending_surveys', count=len(pending_responses))}"
             )
         else:
-            await callback.message.edit_text(
-                f"👋 Добро пожаловать, {employee.first_name}!\n\n"
-                "Нет доступных опросов на данный момент. "
-                "Вы будете notified, когда появятся новые опросы.",
-                reply_markup=build_main_menu_keyboard()
+            text = (
+                f"👋 {get_welcome_message(language, 'greeting', name=name)}\n\n"
+                f"{get_welcome_message(language, 'intro')}\n\n"
+                f"{get_welcome_message(language, 'no_surveys')}"
             )
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=build_main_menu_keyboard(language)
+        )
 
     await callback.answer()

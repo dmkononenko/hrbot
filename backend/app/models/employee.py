@@ -16,6 +16,9 @@ class Employee(Base):
     branch = Column(String(255))
     department = Column(String(255))
     position = Column(String(255))
+    gender = Column(String(10))  # 'male', 'female', 'other'
+    age = Column(Integer)
+    language = Column(String(2), default="ru")  # 'ru' or 'kg'
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

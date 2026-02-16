@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,16 @@ from app.bot import bot, dp, storage
 from app.bot.handlers.start import router as start_router
 from app.bot.handlers.survey import router as survey_router
 from aiogram.types import Update
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('/tmp/hrbot_bot.log'),
+        logging.StreamHandler()
+    ]
+)
 
 # Register bot handlers
 dp.include_router(start_router)

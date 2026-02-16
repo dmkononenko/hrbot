@@ -77,3 +77,22 @@ class SurveyResults(BaseModel):
 class ResponseList(BaseModel):
     responses: List[SurveyResponse]
     total: int
+
+
+# Analytics schemas
+class QuestionAnalytics(BaseModel):
+    question_id: int
+    question_text: str
+    question_type: str
+    total_answers: int
+    choice_distribution: Optional[List[dict]] = None  # For choice questions: [{"option": "text", "count": 5, "percentage": 25.0}]
+    text_responses: Optional[List[str]] = None  # For text questions
+
+
+class SurveyAnalytics(BaseModel):
+    survey_id: int
+    survey_title: str
+    total_responses: int
+    completed_responses: int
+    completion_rate: float
+    question_analytics: List[QuestionAnalytics]

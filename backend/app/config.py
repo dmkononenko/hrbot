@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # HR Admin
     HR_TELEGRAM_IDS: str = ""
 
+    # Bot Behavior
+    REMINDER_INTERVAL_MINUTES: int = 1440
+    MAX_REMINDER_ATTEMPTS: int = 3
+
     @property
     def hr_telegram_id_list(self) -> List[int]:
         """Parse HR Telegram IDs from comma-separated string."""

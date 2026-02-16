@@ -25,7 +25,9 @@ class Question(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     survey_id = Column(Integer, ForeignKey("surveys.id", ondelete="CASCADE"), nullable=False)
-    question_text = Column(Text, nullable=False)
+    question_text = Column(Text, nullable=False)  # Default (RU)
+    question_text_ru = Column(Text)  # Russian version
+    question_text_kg = Column(Text)  # Kyrgyz version
     question_type = Column(String(20), nullable=False)  # 'text', 'single_choice', 'multiple_choice'
     order_index = Column(Integer, nullable=False)
     is_required = Column(Boolean, default=True)

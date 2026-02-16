@@ -27,7 +27,15 @@ export const surveysApi = {
     api.delete(`/surveys/${id}`),
 
   getResults: (id: number) =>
-    api.get(`/surveys/${id}/results`),
+    api.get(`/responses/surveys/${id}/results`),
+
+  exportResults: (id: number) =>
+    api.get(`/responses/surveys/${id}/results/export`, {
+      responseType: 'blob',
+    }),
+
+  getAnalytics: (id: number) =>
+    api.get(`/responses/surveys/${id}/analytics`),
 }
 
 // Employees API
@@ -40,6 +48,9 @@ export const employeesApi = {
 
   getByTelegramId: (telegramId: number) =>
     api.get(`/employees/telegram/${telegramId}`),
+
+  getResponses: (id: number) =>
+    api.get(`/responses/employees/${id}/responses`),
 
   create: (data: any) =>
     api.post('/employees', data),

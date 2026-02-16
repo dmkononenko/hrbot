@@ -10,6 +10,8 @@ from app.schemas.response import (
     QuestionResult,
     EmployeeResult,
     ResponseResult,
+    SurveyAnalytics,
+    QuestionAnalytics,
 )
 from app.schemas.bot import (
     SurveyInviteRequest,

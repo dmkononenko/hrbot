@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { surveysApi, employeesApi, botApi } from '@/api/client'
 import type { Survey, QuestionType, Employee } from '@/types'
-import { Plus, Pencil, Trash2, BarChart3, X, Users, Check } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, BarChart3, X, Users, Check, Download } from 'lucide-vue-next'
 import { Checkbox } from '@/components/ui/checkbox'
 
 const router = useRouter()
@@ -53,6 +53,8 @@ const formData = ref({
   is_active: true,
   questions: [] as {
     question_text: string
+    question_text_ru: string
+    question_text_kg: string
     question_type: QuestionType
     order_index: number
     is_required: boolean
@@ -85,6 +87,8 @@ const openEditDialog = (survey: Survey) => {
     is_active: survey.is_active,
     questions: survey.questions?.map(q => ({
       question_text: q.question_text,
+      question_text_ru: q.question_text_ru || '',
+      question_text_kg: q.question_text_kg || '',
       question_type: q.question_type,
       order_index: q.order_index,
       is_required: q.is_required,
@@ -100,6 +104,8 @@ const openEditDialog = (survey: Survey) => {
 const addQuestion = () => {
   formData.value.questions.push({
     question_text: '',
+    question_text_ru: '',
+    question_text_kg: '',
     question_type: 'single_choice',
     order_index: formData.value.questions.length,
     is_required: true,
@@ -171,6 +177,31 @@ const deleteSurvey = async () => {
 
 const viewResults = (surveyId: number) => {
   router.push(`/surveys/${surveyId}/results`)
+}
+
+const exportToExcel = async (surveyId: number, surveyTitle: string) => {
+  try {
+    const response = await surveysApi.exportResults(surveyId)
+
+    if (!response.data) {
+      alert('Ошибка: нет данных от сервера')
+      return
+    }
+
+    const url = window.URL.createObjectURL(new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    }))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${surveyTitle}_${new Date().toISOString().split('T')[0]}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (error: any) {
+    console.error('Failed to export results:', error)
+    alert(`Ошибка экспорта: ${error.response?.data?.detail || error.message || 'Неизвестная ошибка'}`)
+  }
 }
 
 // Assignment functions
@@ -315,6 +346,9 @@ onMounted(loadSurveys)
                     <Button variant="ghost" size="icon" @click="viewResults(survey.id)">
                       <BarChart3 class="h-4 w-4" />
                     </Button>
+                    <Button variant="ghost" size="icon" @click="exportToExcel(survey.id, survey.title)" title="Экспорт в Excel">
+                      <Download class="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" @click="openEditDialog(survey)">
                       <Pencil class="h-4 w-4" />
                     </Button>
@@ -390,13 +424,26 @@ onMounted(loadSurveys)
             >
               <div class="flex items-start justify-between">
                 <div class="flex-1 space-y-4">
-                  <div class="space-y-2">
-                    <Label :for="`question-${qIndex}`">Вопрос {{ qIndex + 1 }}</Label>
-                    <Input
-                      :id="`question-${qIndex}`"
-                      v-model="question.question_text"
-                      placeholder="Текст вопроса"
-                    />
+                  <div class="space-y-4">
+                    <!-- Russian version -->
+                    <div class="space-y-2">
+                      <Label :for="`question-ru-${qIndex}`">Вопрос {{ qIndex + 1 }} (Русский)</Label>
+                      <Input
+                        :id="`question-ru-${qIndex}`"
+                        v-model="question.question_text"
+                        placeholder="Текст вопроса на русском"
+                      />
+                    </div>
+
+                    <!-- Kyrgyz version -->
+                    <div class="space-y-2">
+                      <Label :for="`question-kg-${qIndex}`">Суроо {{ qIndex + 1 }} (Кыргызча)</Label>
+                      <Input
+                        :id="`question-kg-${qIndex}`"
+                        v-model="question.question_text_kg"
+                        placeholder="Сурамдын кыргызча тексты"
+                      />
+                    </div>
                   </div>
 
                   <div class="grid grid-cols-2 gap-4">

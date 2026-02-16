@@ -14,7 +14,16 @@ from app.bot.keyboards.keyboards import (
     build_single_choice_keyboard,
     build_multiple_choice_keyboard,
     build_cancel_keyboard,
-    build_help_keyboard
+    build_help_keyboard,
+    build_main_menu_keyboard,
+)
+from app.bot.helpers.localization import (
+    get_employee_language,
+    get_message,
+    get_help_message,
+    get_welcome_message,
+    LANG_KG,
+    LANG_RU,
 )
 from app.bot.bot import bot
 from app.bot.services.notification_service import NotificationService
@@ -43,10 +52,11 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
             select(Employee).where(Employee.telegram_id == telegram_id)
         )
         employee = emp_result.scalar_one_or_none()
+        language = get_employee_language(employee)
 
         if not employee:
             logger.warning(f"Employee not found for telegram_id: {telegram_id}")
-            await callback.message.edit_text("Сотрудник не найден. Пожалуйста, свяжитесь с HR.")
+            await callback.message.edit_text(get_message(language, "employee_not_found"))
             return
 
         # Get pending response
@@ -61,7 +71,7 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
 
         if not response:
             logger.warning(f"No pending survey found for employee_id: {employee.id}, survey_id: {survey_id}")
-            await callback.message.edit_text("Нет доступных опросов.")
+            await callback.message.edit_text(get_message(language, "no_pending_survey"))
             return
 
         # Update status to in_progress
@@ -78,7 +88,7 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
 
         if not survey or not survey.questions:
             logger.error(f"Survey has no questions for survey_id: {survey_id}")
-            await callback.message.edit_text("У этого опроса нет вопросов.")
+            await callback.message.edit_text(get_message(language, "survey_no_questions"))
             return
 
         # Store survey and response data in FSM
@@ -86,7 +96,8 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
             survey_id=survey_id,
             response_id=response.id,
             current_question_index=0,
-            selected_answers=[]
+            selected_answers=[],
+            language=language,
         )
 
         # Show first question
@@ -99,14 +110,26 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
 async def show_question(message: Message, question: Question, bot, user_id: int, state: FSMContext = None):
     """Display question based on type and set appropriate FSM state."""
     logger.info(f"show_question: question_id={question.id}, type={question.question_type}, has_state={state is not None}")
+
+    # Get language from state
+    language = LANG_RU
+    if state:
+        state_data = await state.get_data()
+        language = state_data.get("language", LANG_RU)
+
+    # Get localized question text
+    question_text = question.question_text  # Default (RU)
+    if language == LANG_KG and question.question_text_kg:
+        question_text = question.question_text_kg
+
     if question.question_type == "text":
         if state:
             await state.set_state(SurveyStates.waiting_for_answer)
             logger.info(f"Set state to waiting_for_answer for text question")
         await message.answer(
-            f"❓ {question.question_text}\n\n"
-            "Введите ваш ответ:",
-            reply_markup=build_cancel_keyboard()
+            f"❓ {question_text}\n\n"
+            f"{get_message(language, 'enter_answer')}",
+            reply_markup=build_cancel_keyboard(language)
         )
 
     elif question.question_type == "single_choice":
@@ -119,7 +142,7 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
         ]
         keyboard = build_single_choice_keyboard(options_list)
         await message.answer(
-            f"❓ {question.question_text}",
+            f"❓ {question_text}",
             reply_markup=keyboard
         )
 
@@ -135,8 +158,8 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
         ]
         keyboard = build_multiple_choice_keyboard(options_list)
         await message.answer(
-            f"❓ {question.question_text}\n\n"
-            "Выберите несколько вариантов:",
+            f"❓ {question_text}\n\n"
+            f"{get_message(language, 'select_multiple')}",
             reply_markup=keyboard
         )
 
@@ -144,19 +167,20 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
 @router.message(SurveyStates.waiting_for_answer)
 async def handle_text_answer(message: Message, state: FSMContext):
     """Handle free text answers."""
+    current_state = await state.get_state()
+    logger.info(f"handle_text_answer called: text='{message.text}', state={current_state}")
+
     telegram_id = message.from_user.id
 
-    async with async_session() as db:
-        # Get current state data
-        state_data = await state.get_data()
-        survey_id = state_data.get("survey_id")
-        response_id = state_data.get("response_id")
-        current_question_index = state_data.get("current_question_index", 0)
+    # Get language from state
+    state_data = await state.get_data()
+    logger.info(f"State data: {state_data}")
+    language = state_data.get("language", LANG_RU)
+    current_question_index = state_data.get("current_question_index", 0)
+    survey_id = state_data.get("survey_id")
+    response_id = state_data.get("response_id")
 
-        if not survey_id or not response_id:
-            logger.error("Missing survey or response data in FSM")
-            await message.answer("Ошибка: данные опроса не найдены. Пожалуйста, начните опрос заново.")
-            return
+    async with async_session() as db:
 
         # Get survey with questions
         survey_result = await db.execute(
@@ -166,16 +190,21 @@ async def handle_text_answer(message: Message, state: FSMContext):
         )
         survey = survey_result.scalar_one_or_none()
 
+        logger.info(f"DEBUG: survey_id={survey_id}, questions_count={len(survey.questions) if survey else 0}, current_index={current_question_index}")
+        if survey:
+            for i, q in enumerate(survey.questions):
+                logger.info(f"  Question {i}: id={q.id}, type={q.question_type}")
+
         if not survey or current_question_index >= len(survey.questions):
-            logger.error(f"Invalid question index: {current_question_index}")
-            await message.answer("Ошибка: вопрос не найден.")
+            logger.error(f"Invalid question index: {current_question_index}, total: {len(survey.questions) if survey else 0}")
+            await message.answer(get_message(language, "error_question_not_found"))
             return
 
         question = survey.questions[current_question_index]
 
         # Validate answer (text questions always require an answer)
         if not message.text or not message.text.strip():
-            await message.answer("Пожалуйста, введите ответ.")
+            await message.answer(get_message(language, "please_enter_answer"))
             return
 
         # Save answer to database
@@ -196,9 +225,8 @@ async def handle_text_answer(message: Message, state: FSMContext):
             await complete_survey(db, response_id)
             await state.clear()
             await message.answer(
-                "✅ Опрос успешно завершен!\n\n"
-                "Спасибо за участие в опросе.",
-                reply_markup=build_help_keyboard()
+                get_message(language, "survey_completed"),
+                reply_markup=build_help_keyboard(language)
             )
         else:
             # Show next question
@@ -208,22 +236,33 @@ async def handle_text_answer(message: Message, state: FSMContext):
         await db.commit()
 
 
-@router.callback_query(SurveyStates.waiting_for_answer, F.data.startswith("option_"))
+@router.callback_query(F.data.startswith("option_"))
 async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
     """Handle single choice selection."""
-    logger.info(f"handle_single_choice called: data={callback.data}, state={await state.get_state()}")
+    current_state = await state.get_state()
+    logger.info(f"handle_single_choice called: data={callback.data}, state={current_state}")
+
+    # Get FSM key info for debugging
+    from aiogram.fsm.storage.base import StorageKey
+    key = state.key
+    logger.info(f"FSM key: chat_id={key.chat_id}, user_id={key.user_id}, bot_id={key.bot_id}")
+
     telegram_id = callback.from_user.id
+
+    # Get language from state
+    state_data = await state.get_data()
+    logger.info(f"State data: {state_data}")
+    language = state_data.get("language", LANG_RU)
 
     async with async_session() as db:
         # Get current state data
-        state_data = await state.get_data()
         survey_id = state_data.get("survey_id")
         response_id = state_data.get("response_id")
         current_question_index = state_data.get("current_question_index", 0)
 
         if not survey_id or not response_id:
-            logger.error("Missing survey or response data in FSM")
-            await callback.message.edit_text("Ошибка: данные опроса не найдены. Пожалуйста, начните опрос заново.")
+            logger.error(f"Missing survey or response data in FSM. Got: survey_id={survey_id}, response_id={response_id}")
+            await callback.message.edit_text(get_message(language, "error_no_data"))
             await callback.answer()
             return
 
@@ -237,7 +276,7 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
 
         if not survey or current_question_index >= len(survey.questions):
             logger.error(f"Invalid question index: {current_question_index}")
-            await callback.message.edit_text("Ошибка: вопрос не найден.")
+            await callback.message.edit_text(get_message(language, "error_question_not_found"))
             await callback.answer()
             return
 
@@ -253,7 +292,7 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
 
         if not option:
             logger.error(f"Option not found: {option_id}")
-            await callback.message.edit_text("Ошибка: вариант ответа не найден.")
+            await callback.message.edit_text(get_message(language, "error_option_not_found"))
             await callback.answer()
             return
 
@@ -275,9 +314,8 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
             await complete_survey(db, response_id)
             await state.clear()
             await callback.message.edit_text(
-                "✅ Опрос успешно завершен!\n\n"
-                "Спасибо за участие в опросе.",
-                reply_markup=build_help_keyboard()
+                get_message(language, "survey_completed"),
+                reply_markup=build_help_keyboard(language)
             )
         else:
             # Show next question
@@ -329,6 +367,12 @@ async def toggle_option(callback: CallbackQuery, state: FSMContext):
 
         question = survey.questions[current_question_index]
 
+        # Get localized question text
+        language = state_data.get("language", LANG_RU)
+        question_text = question.question_text  # Default (RU)
+        if language == LANG_KG and question.question_text_kg:
+            question_text = question.question_text_kg
+
         # Rebuild keyboard with updated selection
         options_list = [
             {"id": opt.id, "option_text": opt.option_text}
@@ -338,8 +382,8 @@ async def toggle_option(callback: CallbackQuery, state: FSMContext):
 
         # Update message
         await callback.message.edit_text(
-            f"❓ {question.question_text}\n\n"
-            "Выберите несколько вариантов:",
+            f"❓ {question_text}\n\n"
+            f"{get_message(language, 'select_multiple')}:",
             reply_markup=keyboard
         )
 
@@ -351,9 +395,12 @@ async def submit_multiple_choice(callback: CallbackQuery, state: FSMContext):
     """Submit multiple choice selections."""
     telegram_id = callback.from_user.id
 
+    # Get language from state
+    state_data = await state.get_data()
+    language = state_data.get("language", LANG_RU)
+
     async with async_session() as db:
         # Get current state data
-        state_data = await state.get_data()
         survey_id = state_data.get("survey_id")
         response_id = state_data.get("response_id")
         current_question_index = state_data.get("current_question_index", 0)
@@ -361,7 +408,7 @@ async def submit_multiple_choice(callback: CallbackQuery, state: FSMContext):
 
         if not survey_id or not response_id:
             logger.error("Missing survey or response data in FSM")
-            await callback.message.edit_text("Ошибка: данные опроса не найдены. Пожалуйста, начните опрос заново.")
+            await callback.message.edit_text(get_message(language, "error_no_data"))
             await callback.answer()
             return
 
@@ -375,17 +422,22 @@ async def submit_multiple_choice(callback: CallbackQuery, state: FSMContext):
 
         if not survey or current_question_index >= len(survey.questions):
             logger.error(f"Invalid question index: {current_question_index}")
-            await callback.message.edit_text("Ошибка: вопрос не найден.")
+            await callback.message.edit_text(get_message(language, "error_question_not_found"))
             await callback.answer()
             return
 
         question = survey.questions[current_question_index]
 
+        # Get localized question text
+        question_text = question.question_text  # Default (RU)
+        if language == LANG_KG and question.question_text_kg:
+            question_text = question.question_text_kg
+
         # Validate that at least one option is selected
         if not selected_answers:
             await callback.message.edit_text(
-                f"❓ {question.question_text}\n\n"
-                "Пожалуйста, выберите хотя бы один вариант ответа.",
+                f"❓ {question_text}\n\n"
+                f"{get_message(language, 'select_at_least_one')}",
                 reply_markup=build_multiple_choice_keyboard(
                     [{"id": opt.id, "option_text": opt.option_text} for opt in question.options],
                     selected_answers
@@ -412,9 +464,8 @@ async def submit_multiple_choice(callback: CallbackQuery, state: FSMContext):
             await complete_survey(db, response_id)
             await state.clear()
             await callback.message.edit_text(
-                "✅ Опрос успешно завершен!\n\n"
-                "Спасибо за участие в опросе.",
-                reply_markup=build_help_keyboard()
+                get_message(language, "survey_completed"),
+                reply_markup=build_help_keyboard(language)
             )
         else:
             # Show next question
@@ -469,7 +520,9 @@ async def cancel_survey(callback: CallbackQuery, state: FSMContext):
     """Cancel survey in progress."""
     telegram_id = callback.from_user.id
 
+    # Get language from state
     state_data = await state.get_data()
+    language = state_data.get("language", LANG_RU)
     response_id = state_data.get("response_id")
 
     # Update response status to cancelled
@@ -489,9 +542,8 @@ async def cancel_survey(callback: CallbackQuery, state: FSMContext):
 
     # Show cancel confirmation
     await callback.message.edit_text(
-        "❌ Опрос отменен\n\n"
-        "Вы можете начать опрос снова, когда он будет доступен.",
-        reply_markup=build_help_keyboard()
+        get_message(language, "survey_cancelled"),
+        reply_markup=build_help_keyboard(language)
     )
 
     await callback.answer()
@@ -508,10 +560,11 @@ async def show_my_surveys(callback: CallbackQuery):
             select(Employee).where(Employee.telegram_id == telegram_id)
         )
         employee = emp_result.scalar_one_or_none()
+        language = get_employee_language(employee)
 
         if not employee:
             logger.warning(f"Employee not found for telegram_id: {telegram_id}")
-            await callback.message.edit_text("Сотрудник не найден. Пожалуйста, свяжитесь с HR.")
+            await callback.message.edit_text(get_message(language, "employee_not_found"))
             await callback.answer()
             return
 
@@ -523,9 +576,8 @@ async def show_my_surveys(callback: CallbackQuery):
 
         if not surveys:
             await callback.message.edit_text(
-                "📋 Доступные опросы\n\n"
-                "В данный момент нет доступных опросов.",
-                reply_markup=build_help_keyboard()
+                get_message(language, "available_surveys"),
+                reply_markup=build_help_keyboard(language)
             )
             await callback.answer()
             return
@@ -541,15 +593,15 @@ async def show_my_surveys(callback: CallbackQuery):
             ])
 
         # Add back button
+        back_text = get_message(language, "back")
         buttons.append([
-            InlineKeyboardButton(text="← Назад", callback_data="back_to_menu")
+            InlineKeyboardButton(text=back_text, callback_data="back_to_menu")
         ])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
         await callback.message.edit_text(
-            "📋 Доступные опросы\n\n"
-            "Выберите опрос для прохождения:",
+            get_message(language, "select_survey"),
             reply_markup=keyboard
         )
 
@@ -559,29 +611,21 @@ async def show_my_surveys(callback: CallbackQuery):
 @router.callback_query(F.data == "help")
 async def show_help(callback: CallbackQuery):
     """Show help information."""
-    help_text = """🤖 Справка по HR Survey Bot
+    async with async_session() as db:
+        # Get employee for language
+        result = await db.execute(
+            select(Employee).where(Employee.telegram_id == callback.from_user.id)
+        )
+        employee = result.scalar_one_or_none()
+        language = get_employee_language(employee)
 
-📋 **Как пройти опрос:**
-1. Выберите доступный опрос из списка
-2. Отвечайте на вопросы по порядку
-3. Для текстовых вопросов введите ваш ответ
-4. Для выбора вариантов нажмите на кнопку
-5. Для множественного выбора выберите несколько вариантов и нажмите "✓ Submit"
+    help_text = get_help_message(language)
 
-❌ **Отмена опроса:**
-- В любой момент нажмите "Отменить опрос"
-- Опрос будет сохранен с статусом "cancelled"
-
-📊 **Мои опросы:**
-- Посмотрите список всех доступных опросов
-
-Если у вас возникли вопросы, свяжитесь с HR."""
-    
     await callback.message.edit_text(
         help_text,
-        reply_markup=build_help_keyboard()
+        reply_markup=build_help_keyboard(language)
     )
-    
+
     await callback.answer()
 
 
@@ -596,9 +640,10 @@ async def back_to_menu(callback: CallbackQuery):
             select(Employee).where(Employee.telegram_id == telegram_id)
         )
         employee = emp_result.scalar_one_or_none()
+        language = get_employee_language(employee)
 
         if not employee:
-            await callback.message.edit_text("Сотрудник не найден. Пожалуйста, свяжитесь с HR.")
+            await callback.message.edit_text(get_message(language, "employee_not_found"))
             await callback.answer()
             return
 
@@ -611,28 +656,26 @@ async def back_to_menu(callback: CallbackQuery):
         )
         pending_responses = result.scalars().all()
 
+        name = employee.first_name or "Кесиптеш"
+
         if pending_responses:
-            await callback.message.edit_text(
-                f"👋 Добро пожаловать, {employee.first_name}!\n\n"
-                f"У вас {len(pending_responses)} опросов в ожидании. "
-                f"Пожалуйста, проверьте меню для продолжения.",
-                reply_markup=build_main_menu_keyboard()
+            text = (
+                f"👋 {get_welcome_message(language, 'greeting', name=name)}\n\n"
+                f"{get_welcome_message(language, 'intro')}\n\n"
+                f"{get_welcome_message(language, 'pending_surveys', count=len(pending_responses))}"
             )
         else:
-            await callback.message.edit_text(
-                f"👋 Добро пожаловать, {employee.first_name}!\n\n"
-                "Нет доступных опросов на данный момент. "
-                "Вы будете notified, когда появятся новые опросы.",
-                reply_markup=build_main_menu_keyboard()
+            text = (
+                f"👋 {get_welcome_message(language, 'greeting', name=name)}\n\n"
+                f"{get_welcome_message(language, 'intro')}\n\n"
+                f"{get_welcome_message(language, 'no_surveys')}"
             )
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=build_main_menu_keyboard(language)
+        )
 
     await callback.answer()
 
 
-# Debug handler - catch all callback queries with option_ prefix
-@router.callback_query(F.data.startswith("option_"))
-async def debug_option_handler(callback: CallbackQuery, state: FSMContext):
-    """Debug handler for option callbacks."""
-    current_state = await state.get_state()
-    logger.warning(f"DEBUG: Received option callback: data={callback.data}, current_state={current_state}")
-    await callback.answer("Debug: state check", show_alert=True)

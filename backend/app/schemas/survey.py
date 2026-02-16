@@ -22,7 +22,9 @@ class QuestionOption(QuestionOptionBase):
 
 # Question Schemas
 class QuestionBase(BaseModel):
-    question_text: str = Field(..., description="The question text")
+    question_text: str = Field(..., description="The question text (default/RU)")
+    question_text_ru: Optional[str] = Field(None, description="Russian version of question text")
+    question_text_kg: Optional[str] = Field(None, description="Kyrgyz version of question text")
     question_type: str = Field(..., pattern="^(text|single_choice|multiple_choice)$")
     order_index: int = 0
     is_required: bool = True

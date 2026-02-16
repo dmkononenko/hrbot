@@ -5,13 +5,17 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'dashboard',
-      component: () => import('@/views/Dashboard.vue'),
+      name: 'surveys',
+      component: () => import('@/views/Surveys.vue'),
     },
     {
       path: '/surveys',
-      name: 'surveys',
-      component: () => import('@/views/Surveys.vue'),
+      redirect: '/',
+    },
+    {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: () => import('@/views/Dashboard.vue'),
     },
     {
       path: '/surveys/:id/results',
@@ -22,6 +26,11 @@ const router = createRouter({
       path: '/employees',
       name: 'employees',
       component: () => import('@/views/Employees.vue'),
+    },
+    {
+      path: '/employees/:id/responses',
+      name: 'employee-responses',
+      component: () => import('@/views/EmployeeResponses.vue'),
     },
     {
       path: '/results',

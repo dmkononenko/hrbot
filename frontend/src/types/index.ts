@@ -11,7 +11,9 @@ export interface QuestionOption {
 export interface Question {
   id: number
   survey_id: number
-  question_text: string
+  question_text: string  // Used as default (RU)
+  question_text_ru?: string
+  question_text_kg?: string
   question_type: QuestionType
   order_index: number
   is_required: boolean
@@ -19,7 +21,9 @@ export interface Question {
 }
 
 export interface QuestionCreate {
-  question_text: string
+  question_text: string  // Used as default (RU)
+  question_text_ru?: string
+  question_text_kg?: string
   question_type: QuestionType
   order_index: number
   is_required: boolean
@@ -69,6 +73,9 @@ export interface Employee {
   branch: string | null
   department: string | null
   position: string | null
+  gender: string | null
+  age: number | null
+  language: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -83,6 +90,9 @@ export interface EmployeeCreate {
   branch?: string
   department?: string
   position?: string
+  gender?: string
+  age?: number
+  language?: string
   is_active?: boolean
 }
 
@@ -94,6 +104,9 @@ export interface EmployeeUpdate {
   branch?: string
   department?: string
   position?: string
+  gender?: string
+  age?: number
+  language?: string
   is_active?: boolean
 }
 
@@ -148,6 +161,8 @@ export interface ResponseResult {
     branch: string | null
     department: string | null
     position: string | null
+    gender: string | null
+    age: number | null
   }
   completed_at: string | null
   answers: AnswerDetail[]
@@ -191,4 +206,30 @@ export interface InitiateSurveyResponse {
   survey_id: number
   invite_sent: boolean
   invite_error: string | null
+}
+
+// Analytics types
+export interface ChoiceDistribution {
+  option_id: number
+  option: string
+  count: number
+  percentage: number
+}
+
+export interface QuestionAnalytics {
+  question_id: number
+  question_text: string
+  question_type: QuestionType
+  total_answers: number
+  choice_distribution?: ChoiceDistribution[]
+  text_responses?: string[]
+}
+
+export interface SurveyAnalyticsResponse {
+  survey_id: number
+  survey_title: string
+  total_responses: number
+  completed_responses: number
+  completion_rate: number
+  question_analytics: QuestionAnalytics[]
 }
