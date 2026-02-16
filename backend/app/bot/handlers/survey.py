@@ -177,11 +177,19 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
         )
 
 
-@router.message(SurveyStates.waiting_for_text_answer)
+@router.message()
 async def handle_text_answer(message: Message, state: FSMContext):
     """Handle free text answers."""
     current_state = await state.get_state()
-    logger.info(f"handle_text_answer called: text='{message.text}', state={current_state}, user_id={message.from_user.id}")
+    current_state_str = current_state.state if current_state else None
+    logger.info(f"[DEBUG] handle_text_answer called: text='{message.text}', state={current_state_str}, user_id={message.from_user.id}")
+    
+    # Use endswith to handle @: prefix in state string (same fix as handle_single_choice)
+    expected_state = SurveyStates.waiting_for_text_answer.state
+    if not current_state_str or not current_state_str.endswith(expected_state):
+        logger.info(f"[DEBUG] Wrong state for text answer: expected {expected_state}, got {current_state_str}")
+        return
+    
 
     telegram_id = message.from_user.id
 
@@ -246,11 +254,16 @@ async def handle_text_answer(message: Message, state: FSMContext):
         if new_index >= len(survey.questions):
             # Complete survey
             await complete_survey(db, response_id)
-            await state.clear()
+            # Send message BEFORE clearing state to ensure user gets confirmation
             await message.answer(
                 get_message(language, "survey_completed"),
                 reply_markup=build_help_keyboard(language)
             )
+            # Clear state after sending message, wrapped in try/except
+            try:
+                await state.clear()
+            except Exception as e:
+                logger.warning(f"Failed to clear state: {e}")
         else:
             # Show next question
             next_question = survey.questions[new_index]
@@ -350,11 +363,16 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
             # Complete survey
             logger.info(f"Last question reached, completing survey for response_id={response_id}")
             await complete_survey(db, response_id)
-            await state.clear()
+            # Send message BEFORE clearing state to ensure user gets confirmation
             await callback.message.edit_text(
                 get_message(language, "survey_completed"),
                 reply_markup=build_help_keyboard(language)
             )
+            # Clear state after sending message, wrapped in try/except
+            try:
+                await state.clear()
+            except Exception as e:
+                logger.warning(f"Failed to clear state: {e}")
         else:
             # Show next question
             next_question = survey.questions[new_index]
@@ -529,11 +547,16 @@ async def submit_multiple_choice(callback: CallbackQuery, state: FSMContext):
         if new_index >= len(survey.questions):
             # Complete survey
             await complete_survey(db, response_id)
-            await state.clear()
+            # Send message BEFORE clearing state to ensure user gets confirmation
             await callback.message.edit_text(
                 get_message(language, "survey_completed"),
                 reply_markup=build_help_keyboard(language)
             )
+            # Clear state after sending message, wrapped in try/except
+            try:
+                await state.clear()
+            except Exception as e:
+                logger.warning(f"Failed to clear state: {e}")
         else:
             # Show next question
             next_question = survey.questions[new_index]
@@ -604,14 +627,17 @@ async def cancel_survey(callback: CallbackQuery, state: FSMContext):
             except Exception as e:
                 logger.error(f"Error cancelling survey: {e}")
 
-    # Clear FSM state
-    await state.clear()
-
-    # Show cancel confirmation
+    # Show cancel confirmation FIRST, then clear state
     await callback.message.edit_text(
         get_message(language, "survey_cancelled"),
         reply_markup=build_help_keyboard(language)
     )
+
+    # Clear FSM state after sending message, wrapped in try/except
+    try:
+        await state.clear()
+    except Exception as e:
+        logger.warning(f"Failed to clear state: {e}")
 
     await callback.answer()
 
