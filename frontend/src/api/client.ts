@@ -36,6 +36,9 @@ export const surveysApi = {
 
   getAnalytics: (id: number) =>
     api.get(`/responses/surveys/${id}/analytics`),
+
+  detachAll: (id: number) =>
+    api.delete(`/responses/surveys/${id}/detach`),
 }
 
 // Employees API

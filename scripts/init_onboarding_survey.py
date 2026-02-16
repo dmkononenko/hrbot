@@ -109,6 +109,8 @@ async def init_onboarding_survey():
             question = Question(
                 survey_id=survey.id,
                 question_text=q_data["text_ru"],  # Using RU as default
+                question_text_ru=q_data["text_ru"],
+                question_text_kg=q_data["text_kg"],
                 question_type=q_data["type"],
                 order_index=q_data["order"],
                 is_required=True

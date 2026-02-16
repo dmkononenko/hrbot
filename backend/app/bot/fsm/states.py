@@ -4,7 +4,8 @@ from aiogram.fsm.state import State, StatesGroup
 class SurveyStates(StatesGroup):
     """States for survey conversation flow."""
 
-    waiting_for_answer = State()  # Waiting for answer to current question
+    waiting_for_text_answer = State()  # Waiting for text answer
+    waiting_for_single_choice = State()  # Waiting for single choice selection
     selecting_options = State()  # Selecting options (multiple choice)
     canceling_survey = State()  # User is canceling survey
 

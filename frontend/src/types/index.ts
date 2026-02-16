@@ -152,6 +152,8 @@ export interface AnswerDetail {
 
 export interface ResponseResult {
   response_id: number
+  survey_id: number
+  survey_title: string
   employee: {
     id: number
     telegram_id: number

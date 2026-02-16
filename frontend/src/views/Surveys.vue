@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { surveysApi, employeesApi, botApi } from '@/api/client'
 import type { Survey, QuestionType, Employee } from '@/types'
-import { Plus, Pencil, Trash2, BarChart3, X, Users, Check, Download } from 'lucide-vue-next'
+import { Plus, Pencil, Trash2, BarChart3, X, Users, Check, Download, Unlink } from 'lucide-vue-next'
 import { Checkbox } from '@/components/ui/checkbox'
 
 const router = useRouter()
@@ -204,6 +204,27 @@ const exportToExcel = async (surveyId: number, surveyTitle: string) => {
   }
 }
 
+const isDetachDialogOpen = ref(false)
+const detachingSurvey = ref<Survey | null>(null)
+
+const confirmDetach = (survey: Survey) => {
+  detachingSurvey.value = survey
+  isDetachDialogOpen.value = true
+}
+
+const detachAllEmployees = async () => {
+  if (!detachingSurvey.value) return
+  try {
+    const response = await surveysApi.detachAll(detachingSurvey.value.id)
+    alert(`Откреплено ${response.data.deleted_count} сотрудников`)
+    isDetachDialogOpen.value = false
+    detachingSurvey.value = null
+  } catch (error: any) {
+    console.error('Failed to detach survey:', error)
+    alert(`Ошибка открепления: ${error.response?.data?.detail || error.message || 'Неизвестная ошибка'}`)
+  }
+}
+
 // Assignment functions
 const openAssignDialog = async (survey: Survey) => {
   assigningSurvey.value = survey
@@ -342,6 +363,9 @@ onMounted(loadSurveys)
                   <div class="flex justify-end gap-2">
                     <Button variant="ghost" size="icon" @click="openAssignDialog(survey)" title="Назначить сотрудникам">
                       <Users class="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" @click="confirmDetach(survey)" title="Открепить всех сотрудников">
+                      <Unlink class="h-4 w-4 text-orange-500" />
                     </Button>
                     <Button variant="ghost" size="icon" @click="viewResults(survey.id)">
                       <BarChart3 class="h-4 w-4" />
@@ -544,6 +568,27 @@ onMounted(loadSurveys)
           </Button>
           <Button variant="destructive" @click="deleteSurvey">
             Удалить
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Detach Confirmation Dialog -->
+    <Dialog :open="isDetachDialogOpen" @update:open="isDetachDialogOpen = $event">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Открепить всех сотрудников?</DialogTitle>
+        </DialogHeader>
+        <p class="text-muted-foreground">
+          Вы уверены, что хотите открепить всех сотрудников от опроса "{{ detachingSurvey?.title }}"?
+          Все ответы и прогресс будут удалены. Это действие нельзя отменить.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" @click="isDetachDialogOpen = false">
+            Отмена
+          </Button>
+          <Button variant="destructive" @click="detachAllEmployees">
+            Открепить всех
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -2,6 +2,7 @@ import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import StateFilter
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,9 +100,11 @@ async def start_survey(callback: CallbackQuery, state: FSMContext):
             selected_answers=[],
             language=language,
         )
+        logger.info(f"Stored FSM data for user {telegram_id}: survey_id={survey_id}, response_id={response.id}")
 
         # Show first question
         first_question = survey.questions[0]
+        logger.info(f"About to show first question: id={first_question.id}, type={first_question.question_type}")
         await show_question(callback.message, first_question, callback.message.bot, callback.from_user.id, state)
 
         await callback.answer()
@@ -124,27 +127,37 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
 
     if question.question_type == "text":
         if state:
-            await state.set_state(SurveyStates.waiting_for_answer)
-            logger.info(f"Set state to waiting_for_answer for text question")
+            await state.set_state(SurveyStates.waiting_for_text_answer)
+            logger.info(f"Set state to waiting_for_text_answer for text question, state={await state.get_state()}")
         await message.answer(
             f"❓ {question_text}\n\n"
             f"{get_message(language, 'enter_answer')}",
             reply_markup=build_cancel_keyboard(language)
         )
+        logger.info(f"Sent text question message to user_id={user_id if user_id else 'unknown'}")
 
     elif question.question_type == "single_choice":
         if state:
-            await state.set_state(SurveyStates.waiting_for_answer)
-            logger.info(f"Set state to waiting_for_answer for single_choice question")
+            await state.set_state(SurveyStates.waiting_for_single_choice)
+            new_state = await state.get_state()
+            logger.info(f"[DEBUG] Set state to waiting_for_single_choice for single_choice question")
+            logger.info(f"[DEBUG] State after set: {new_state}, state_type={type(new_state)}")
+            # Verify state was saved
+            state_data = await state.get_data()
+            logger.info(f"[DEBUG] FSM data after state set: survey_id={state_data.get('survey_id')}, response_id={state_data.get('response_id')}")
+        else:
+            logger.warning(f"[DEBUG] State is None! Cannot set state for single_choice question")
         options_list = [
             {"id": opt.id, "option_text": opt.option_text}
             for opt in question.options
         ]
+        logger.info(f"[DEBUG] Building single_choice keyboard with {len(options_list)} options")
         keyboard = build_single_choice_keyboard(options_list)
         await message.answer(
             f"❓ {question_text}",
             reply_markup=keyboard
         )
+        logger.info(f"[DEBUG] Single choice question sent to user")
 
     elif question.question_type == "multiple_choice":
         if state:
@@ -164,11 +177,11 @@ async def show_question(message: Message, question: Question, bot, user_id: int,
         )
 
 
-@router.message(SurveyStates.waiting_for_answer)
+@router.message(SurveyStates.waiting_for_text_answer)
 async def handle_text_answer(message: Message, state: FSMContext):
     """Handle free text answers."""
     current_state = await state.get_state()
-    logger.info(f"handle_text_answer called: text='{message.text}', state={current_state}")
+    logger.info(f"handle_text_answer called: text='{message.text}', state={current_state}, user_id={message.from_user.id}")
 
     telegram_id = message.from_user.id
 
@@ -180,8 +193,13 @@ async def handle_text_answer(message: Message, state: FSMContext):
     survey_id = state_data.get("survey_id")
     response_id = state_data.get("response_id")
 
-    async with async_session() as db:
+    if not survey_id or not response_id:
+        logger.error(f"Missing survey_id or response_id in FSM state. survey_id={survey_id}, response_id={response_id}")
+        await message.answer(get_message(language, "error_no_data"))
+        await state.clear()
+        return
 
+    async with async_session() as db:
         # Get survey with questions
         survey_result = await db.execute(
             select(Survey)
@@ -198,12 +216,15 @@ async def handle_text_answer(message: Message, state: FSMContext):
         if not survey or current_question_index >= len(survey.questions):
             logger.error(f"Invalid question index: {current_question_index}, total: {len(survey.questions) if survey else 0}")
             await message.answer(get_message(language, "error_question_not_found"))
+            await state.clear()
             return
 
         question = survey.questions[current_question_index]
+        logger.info(f"Current question: id={question.id}, type={question.question_type}")
 
         # Validate answer (text questions always require an answer)
         if not message.text or not message.text.strip():
+            logger.warning(f"Empty answer received from user {telegram_id}")
             await message.answer(get_message(language, "please_enter_answer"))
             return
 
@@ -214,6 +235,8 @@ async def handle_text_answer(message: Message, state: FSMContext):
             answer_text=message.text.strip()
         )
         db.add(answer)
+        await db.commit()
+        logger.info(f"Saved answer for question {question.id}, response_id={response_id}")
 
         # Update current question index
         new_index = current_question_index + 1
@@ -233,25 +256,37 @@ async def handle_text_answer(message: Message, state: FSMContext):
             next_question = survey.questions[new_index]
             await show_question(message, next_question, message.bot, telegram_id, state)
 
-        await db.commit()
-
 
 @router.callback_query(F.data.startswith("option_"))
 async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
     """Handle single choice selection."""
     current_state = await state.get_state()
-    logger.info(f"handle_single_choice called: data={callback.data}, state={current_state}")
+    logger.info(f"[DEBUG] handle_single_choice called: data={callback.data}, state={current_state}, state_type={type(current_state)}")
 
-    # Get FSM key info for debugging
-    from aiogram.fsm.storage.base import StorageKey
-    key = state.key
-    logger.info(f"FSM key: chat_id={key.chat_id}, user_id={key.user_id}, bot_id={key.bot_id}")
+    # Check if user is in the right state
+    # In aiogram 3.x, get_state() returns a State object with .state attribute for string value
+    current_state_str = current_state.state if current_state else None
+    logger.info(f"[DEBUG] Current state string: {current_state_str}, expected: {SurveyStates.waiting_for_single_choice.state}")
+    
+    # DEBUG: Log all FSM data to understand the current state
+    state_data = await state.get_data()
+    logger.info(f"[DEBUG] FSM data: survey_id={state_data.get('survey_id')}, response_id={state_data.get('response_id')}, current_question_index={state_data.get('current_question_index')}")
+    
+    # Use endswith to handle @: prefix in state string
+    expected_state = SurveyStates.waiting_for_single_choice.state
+    if not current_state_str or not current_state_str.endswith(expected_state):
+        logger.warning(f"[DEBUG] Wrong state for single choice: expected {expected_state}, got {current_state_str}")
+        # DEBUG: Provide user feedback instead of silent failure
+        language = state_data.get("language", LANG_RU)
+        await callback.answer(get_message(language, "error_wrong_state") if language else "Ошибка состояния. Попробуйте начать опрос заново.", show_alert=True)
+        return
 
     telegram_id = callback.from_user.id
+    logger.info(f"Processing single choice for user {telegram_id}")
 
     # Get language from state
     state_data = await state.get_data()
-    logger.info(f"State data: {state_data}")
+    logger.info(f"Retrieved FSM data: survey_id={state_data.get('survey_id')}, response_id={state_data.get('response_id')}, current_question_index={state_data.get('current_question_index')}")
     language = state_data.get("language", LANG_RU)
 
     async with async_session() as db:
@@ -297,6 +332,7 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
             return
 
         # Save answer to database
+        logger.info(f"Saving answer: question_id={question.id}, response_id={response_id}, option_id={option.id}")
         answer = Answer(
             question_id=question.id,
             response_id=response_id,
@@ -307,10 +343,12 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
         # Update current question index
         new_index = current_question_index + 1
         await state.update_data(current_question_index=new_index)
+        logger.info(f"Updated question index from {current_question_index} to {new_index}")
 
         # Check if this was the last question
         if new_index >= len(survey.questions):
             # Complete survey
+            logger.info(f"Last question reached, completing survey for response_id={response_id}")
             await complete_survey(db, response_id)
             await state.clear()
             await callback.message.edit_text(
@@ -320,29 +358,45 @@ async def handle_single_choice(callback: CallbackQuery, state: FSMContext):
         else:
             # Show next question
             next_question = survey.questions[new_index]
+            logger.info(f"Moving to next question: index={new_index}, question_id={next_question.id}, type={next_question.question_type}")
             await show_question(callback.message, next_question, callback.message.bot, telegram_id, state)
 
         await db.commit()
+        logger.info(f"Answer committed to database for question {question.id}")
         await callback.answer()
 
 
-@router.callback_query(SurveyStates.selecting_options, F.data.startswith("toggle_option_"))
+@router.callback_query(F.data.startswith("toggle_option_"))
 async def toggle_option(callback: CallbackQuery, state: FSMContext):
     """Toggle option selection for multiple choice."""
-    telegram_id = callback.from_user.id
+    current_state = await state.get_state()
+    current_state_str = current_state.state if current_state else None
+    logger.info(f"toggle_option called: data={callback.data}, state={current_state_str}")
+    
+    # Use endswith to handle @: prefix in state string
+    expected_state = SurveyStates.selecting_options.state
+    if not current_state_str or not current_state_str.endswith(expected_state):
+        logger.warning(f"Wrong state for toggle_option: expected {expected_state}, got {current_state_str}")
+        await callback.answer()
+        return
 
+    telegram_id = callback.from_user.id
     option_id = int(callback.data.split("_")[2])
+    logger.info(f"Toggling option {option_id} for user {telegram_id}")
 
     # Get current state data
     state_data = await state.get_data()
     current_question_index = state_data.get("current_question_index", 0)
+    logger.info(f"Current question index: {current_question_index}")
 
     # Get selected options
     selected_answers = state_data.get("selected_answers", [])
     if option_id in selected_answers:
         selected_answers.remove(option_id)
+        logger.info(f"Removed option {option_id} from selection")
     else:
         selected_answers.append(option_id)
+        logger.info(f"Added option {option_id} to selection")
 
     # Update state
     await state.update_data(selected_answers=selected_answers)
@@ -390,13 +444,26 @@ async def toggle_option(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
 
 
-@router.callback_query(SurveyStates.selecting_options, F.data == "submit_options")
+@router.callback_query(F.data == "submit_options")
 async def submit_multiple_choice(callback: CallbackQuery, state: FSMContext):
     """Submit multiple choice selections."""
+    current_state = await state.get_state()
+    current_state_str = current_state.state if current_state else None
+    logger.info(f"submit_multiple_choice called: state={current_state_str}")
+    
+    # Use endswith to handle @: prefix in state string
+    expected_state = SurveyStates.selecting_options.state
+    if not current_state_str or not current_state_str.endswith(expected_state):
+        logger.warning(f"Wrong state for submit_multiple_choice: expected {expected_state}, got {current_state_str}")
+        await callback.answer()
+        return
+
     telegram_id = callback.from_user.id
+    logger.info(f"Submitting multiple choice for user {telegram_id}")
 
     # Get language from state
     state_data = await state.get_data()
+    logger.info(f"Retrieved FSM data: survey_id={state_data.get('survey_id')}, response_id={state_data.get('response_id')}, current_question_index={state_data.get('current_question_index')}, selected_answers={state_data.get('selected_answers')}")
     language = state_data.get("language", LANG_RU)
 
     async with async_session() as db:
@@ -551,7 +618,7 @@ async def cancel_survey(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "my_surveys")
 async def show_my_surveys(callback: CallbackQuery):
-    """Show list of available surveys."""
+    """Show list of available surveys assigned to the employee."""
     telegram_id = callback.from_user.id
 
     async with async_session() as db:
@@ -568,29 +635,45 @@ async def show_my_surveys(callback: CallbackQuery):
             await callback.answer()
             return
 
-        # Get active surveys
+        # Get survey responses for this employee (pending or in_progress)
         result = await db.execute(
-            select(Survey).where(Survey.is_active == True)
+            select(SurveyResponse)
+            .where(
+                SurveyResponse.employee_id == employee.id,
+                SurveyResponse.status.in_(["pending", "in_progress"])
+            )
+            .options(selectinload(SurveyResponse.survey))
         )
-        surveys = result.scalars().all()
+        responses = result.scalars().all()
 
-        if not surveys:
+        if not responses:
             await callback.message.edit_text(
-                get_message(language, "available_surveys"),
+                get_message(language, "no_surveys"),
                 reply_markup=build_help_keyboard(language)
             )
             await callback.answer()
             return
 
-        # Build keyboard with surveys
+        # Build keyboard with assigned surveys
         buttons = []
-        for survey in surveys:
-            buttons.append([
-                InlineKeyboardButton(
-                    text=survey.title,
-                    callback_data=f"start_survey_{survey.id}"
-                )
-            ])
+        for response in responses:
+            survey = response.survey
+            if survey and survey.is_active:
+                status_emoji = "⏳" if response.status == "pending" else "🔄"
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"{status_emoji} {survey.title}",
+                        callback_data=f"start_survey_{survey.id}"
+                    )
+                ])
+
+        if not buttons:
+            await callback.message.edit_text(
+                get_message(language, "no_surveys"),
+                reply_markup=build_help_keyboard(language)
+            )
+            await callback.answer()
+            return
 
         # Add back button
         back_text = get_message(language, "back")

@@ -61,6 +61,8 @@ class EmployeeResult(BaseModel):
 
 class ResponseResult(BaseModel):
     response_id: int
+    survey_id: int
+    survey_title: str
     employee: EmployeeResult
     completed_at: Optional[datetime] = None
     answers: List[QuestionResult]

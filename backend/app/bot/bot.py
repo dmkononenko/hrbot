@@ -1,3 +1,4 @@
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -11,5 +12,6 @@ bot = Bot(
 )
 
 # Create dispatcher with FSM storage
-storage = SQLiteStorage(db_path="./hrbot.db")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+storage = SQLiteStorage(db_path=os.path.join(BASE_DIR, "../../hrbot.db"))
 dp = Dispatcher(storage=storage)

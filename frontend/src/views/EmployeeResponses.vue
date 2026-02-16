@@ -115,7 +115,7 @@ onMounted(loadResponses)
             <div class="flex items-start justify-between">
               <div class="flex-1">
                 <CardTitle class="text-lg">
-                  Опрос #{{ response.response_id }}
+                  {{ response.survey_title }}
                 </CardTitle>
                 <CardDescription class="mt-2">
                   <div class="flex flex-wrap gap-2">
@@ -161,7 +161,7 @@ onMounted(loadResponses)
     <Dialog :open="isDetailDialogOpen" @update:open="isDetailDialogOpen = $event">
       <DialogContent class="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Ответы на опрос #{{ selectedResponse?.response_id }}</DialogTitle>
+          <DialogTitle>Ответы на опрос: {{ selectedResponse?.survey_title }}</DialogTitle>
         </DialogHeader>
 
         <div v-if="selectedResponse" class="space-y-4">

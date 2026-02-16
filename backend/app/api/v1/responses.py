@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from typing import List
 from datetime import datetime
@@ -125,6 +125,8 @@ async def get_survey_results(survey_id: int, db: AsyncSession = Depends(get_db))
 
         response_result = ResponseResult(
             response_id=response.id,
+            survey_id=survey.id,
+            survey_title=survey.title,
             employee=employee_result,
             completed_at=response.completed_at,
             answers=question_results,
@@ -344,6 +346,8 @@ async def get_employee_responses(employee_id: int, db: AsyncSession = Depends(ge
 
         response_result = ResponseResult(
             response_id=response.id,
+            survey_id=survey.id,
+            survey_title=survey.title,
             employee=employee_result,
             completed_at=response.completed_at,
             answers=question_results,
@@ -369,6 +373,45 @@ async def get_employee_responses(employee_id: int, db: AsyncSession = Depends(ge
         total_responses=len(response_results),
         completion_rate=1.0 if response_results else 0.0,
     )
+
+
+@router.delete("/surveys/{survey_id}/detach")
+async def detach_survey_from_all_employees(survey_id: int, db: AsyncSession = Depends(get_db)):
+    """Detach survey from all employees by deleting all survey responses."""
+    # Verify survey exists
+    survey_result = await db.execute(
+        select(Survey).where(Survey.id == survey_id)
+    )
+    survey = survey_result.scalar_one_or_none()
+
+    if not survey:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Survey not found"
+        )
+
+    # Get all response IDs for this survey
+    responses_result = await db.execute(
+        select(SurveyResponse.id).where(SurveyResponse.survey_id == survey_id)
+    )
+    response_ids = [r[0] for r in responses_result.fetchall()]
+
+    deleted_count = len(response_ids)
+
+    if response_ids:
+        # Delete all answers for these responses (using bulk delete)
+        await db.execute(
+            delete(Answer).where(Answer.response_id.in_(response_ids))
+        )
+
+        # Delete all responses
+        await db.execute(
+            delete(SurveyResponse).where(SurveyResponse.id.in_(response_ids))
+        )
+
+    await db.commit()
+
+    return {"message": f"Detached survey from {deleted_count} employees", "deleted_count": deleted_count}
 
 
 @router.get("/surveys/{survey_id}/results/export")

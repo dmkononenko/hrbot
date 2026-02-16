@@ -42,7 +42,7 @@ async def initiate_survey(
 ):
     """
     HR initiates a survey for an employee.
-    Checks if employee is eligible (90+ days after start date).
+    Checks if employee is eligible (days_after_start after start date).
     """
     # Get employee
     employee_result = await db.execute(
@@ -74,14 +74,8 @@ async def initiate_survey(
             detail="Survey is not active"
         )
 
-    # Check 90-day eligibility
-    days_since_start = (datetime.now().date() - employee.start_date).days
-    if days_since_start < survey.days_after_start:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Employee has only been with us for {days_since_start} days. "
-                   f"Surveys can be initiated after {survey.days_after_start} days."
-        )
+    # Note: Removed days_after_start check - HR can manually assign surveys regardless of start date
+    # This allows onboarding surveys to be assigned immediately
 
     # Check if response already exists
     existing_result = await db.execute(
